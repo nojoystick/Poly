@@ -8,9 +8,10 @@ static AudioSynthWaveform       waveforms2[POLY];
 static AudioSynthNoisePink      pink[POLY];
 static AudioSynthNoiseWhite     white[POLY];
 static AudioEffectEnvelope      envelope[POLY];
-static AudioFilterStateVariable velFilter[POLY];
+static AudioFilterStateVariable filter[POLY];
 static AudioEffectBitcrusher    sat[POLY];
-static AudioFilterStateVariable filter; 
+static AudioFilterStateVariable lfo; 
+static AudioFilterStateVariable endFilter;
 static IntervalTimer            releaseTimer[POLY];
 static AudioMixer4              inMixer[NUM_INPUT_MIXER];
 static AudioMixer4              outMixer[NUM_OUTPUT_MIXER];
@@ -20,15 +21,20 @@ AudioControlSGTL5000            sgtl5000_1;                // controller object
 /****************************************************************************
 * Huge array of patchCords to link mixer and waveform objects together
 * Final signal chain:
+* 
 * Waveform1 -\
-*             \   | condense | |-----FX-----|  |--filtering--| 
-* Waveform2 ---\  |    to    |       ** TODO **
-*               ->|    one   |->[sat]->[trem]->[env]->[filter]->[out]
-* Pink --------/  | outMixer |
-*             /
-* White -----/
-*
-*/
+*             \   | combine  | 
+* Waveform2 ---\  |   to     |   
+*               ->|   one    | -> [sat] -> [envelope] -> [filter] -\
+* Pink --------/  | inMixer  |                                      \
+*             /                                                      \   | condense |
+* White -----/                                                        \__|    to    |
+*                                                                     /  |   one    | -> [endFilter] -> [LFO] -> lineout
+*                                                                    /   | outMixer |
+* ... etc                                                           /
+* for all 8 --------------------> [sat] -> [envelope] -> [filter] -/
+* voices                                                                        
+*/                      
 static AudioConnection     patchCord[]
 { 
   // each voice has 2 oscillators + white and pink noise
@@ -60,19 +66,19 @@ static AudioConnection     patchCord[]
   { sat[4],        0, envelope[4],0 } , { sat[5],        0, envelope[5],0 } ,
   { sat[6],        0, envelope[6],0 } , { sat[7],        0, envelope[7],0 } ,
   // feed each envelope into its own velocity filter
-  { envelope[0],   0, velFilter[0],  0 } , { envelope[1],    0, velFilter[1],   0 } ,
-  { envelope[2],   0, velFilter[2],  0 } , { envelope[3],    0, velFilter[3],   0 } ,
-  { envelope[4],   0, velFilter[4],  0 } , { envelope[5],    0, velFilter[5],   0 } ,
-  { envelope[6],   0, velFilter[6],  0 } , { envelope[7],    0, velFilter[7],   0 } ,
+  { envelope[0],   0, filter[0],  0 } , { envelope[1],   0, filter[1],   0 } ,
+  { envelope[2],   0, filter[2],  0 } , { envelope[3],   0, filter[3],   0 } ,
+  { envelope[4],   0, filter[4],  0 } , { envelope[5],   0, filter[5],   0 } ,
+  { envelope[6],   0, filter[6],  0 } , { envelope[7],   0, filter[7],   0 } ,
   // condense all inputs down to a single mixer, outMixer[0]
-  { velFilter[0],  0, outMixer[1],   0 } , { velFilter[1],   0, outMixer[1],   1 } ,
-  { velFilter[2],  0, outMixer[1],   2 } , { velFilter[3],   0, outMixer[1],   3 } ,
-  { velFilter[4],  0, outMixer[2],   0 } , { velFilter[5],   0, outMixer[2],   1 } ,
-  { velFilter[6],  0, outMixer[2],   2 } , { velFilter[7],   0, outMixer[2],   3 } ,
-  { outMixer[2],   0, outMixer[0],   0 } , { outMixer[1],    0, outMixer[0],   1 } , 
+  { filter[0],     0, outMixer[1],0 } , { filter[1],     0, outMixer[1], 1 } ,
+  { filter[2],     0, outMixer[1],2 } , { filter[3],     0, outMixer[1], 3 } ,
+  { filter[4],     0, outMixer[2],0 } , { filter[5],     0, outMixer[2], 1 } ,
+  { filter[6],     0, outMixer[2],2 } , { filter[7],     0, outMixer[2], 3 } ,
+  { outMixer[2],   0, outMixer[0],0 } , { outMixer[1],   0, outMixer[0], 1 } , 
   // effects chain leading to lineout
-  { outMixer[0],   0, filter,            0 } ,
-  { filter,        0, lineout,        0 } , { filter,         0, lineout,       1 }
+  { outMixer[0],0, endFilter,     0 } , { endFilter,     0, lfo,         0 } ,
+  { lfo,        0, lineout,       0 } ,{ lfo,            0, lineout,     1 }
 };
 
 

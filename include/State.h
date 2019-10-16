@@ -7,6 +7,11 @@
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 static int state[NUM_INPUTS];           // store current values of global analog inputs; 0-1024
 static int activeNotes[POLY];           // global store of currently active notes
+static float globalBend = 1.0;
+IntervalTimer vibratoTimer;
+IntervalTimer lfoTimer;
+volatile int vibStep = 0;
+volatile int lfoStep = 0;
 
 /*************************************************************************************
  ************************************************************************************* 
@@ -36,10 +41,10 @@ void updateRate()
  */
 void updateBoost()
 {
-//  int val;
-//  if(state[BO_SEL_CC]==1) val = 16 - (int)(state[BO_MIX_CC]/8);
-//  else val = 16;
-//  for(int i = 0; i < POLY; i++) sat[i].bits(val);
+  int val;
+  if(state[BO_SEL_CC]==0) val = 16 - (volume[state[BO_MIX_CC]] * 16);
+  else val = 16;
+  for(int i = 0; i < POLY; i++) sat[i].bits(val);
 }
 
 /***************************************************************************
@@ -61,22 +66,66 @@ void updateWaveform(short tone_type)
  * When the filter switch is activated, readFilter will call both other
  *     functions to update the values to match the state
  */
-void updateFilterRes()
+void doLFO()
 {
-  if(state[FI_SEL_CC] == 1) filter.resonance((4.3 * (state[FI_RES_CC]*DIV127)) + 0.7);
-  else filter.resonance(5.0);
+  lfo.frequency(5000 + state[LF_DEP_CC] * DIV127 * lfoCycle[lfoStep]);
+  lfoStep++;
+  if(lfoStep == 128) lfoStep = 0;
+}
+
+void doVibrato()
+{
+  float bendF = map(float(vibCycle[vibStep]), 0, 32767, -2, 2);
+  float amtToBend = pow(2, state[VI_DEP_CC] * DIV127* bendF / 12);
+
+  for(int i = 0; i < POLY; i++)
+  {
+    if(activeNotes[i]!=0)
+    {
+      int currNote = activeNotes[i];
+      waveforms1[i].frequency(frequency[currNote] * globalBend * amtToBend);
+      waveforms2[i].frequency(frequency[currNote+12] * globalBend * amtToBend);
+    }
+  }
+  vibStep++;
+  if(vibStep == 32) vibStep = 0;
+}
+
+void updateRes()
+{
+  int val = (4.3 * (state[FI_RES_CC]*DIV127)) + 0.7;
+  //lfo.resonance(val);
+  for(int i = 0; i < POLY; i++) filter[i].resonance(val);
+  endFilter.resonance(val);
+
 }
 
 void updateFilterFreq()
 {
-  if(state[FI_SEL_CC] == 1) filter.frequency(10000 * (state[FI_FRQ_CC]*DIV127));
-  else filter.frequency(1000);
+  // if(state[FI_SEL_CC] == 0) 
+  // {
+  //   for(int i = 0; i < POLY; i++) filter[i].frequency(2000 + 80 * state[FI_DEP_CC]);
+  // }
+  int val = 10000 * (state[FI_DEP_CC] * DIV127);
+  endFilter.frequency(val);
+}
+
+void readLFO()
+{
+  if(state[LF_SEL_CC] == 1) lfoTimer.begin(doLFO, volume[state[MA_RAT_CC]]*1000000/128);
+  else lfoTimer.end();
 }
 
 void readFilter()
 {
-  updateFilterRes();
+  updateRes();
   updateFilterFreq();
+}
+
+void updateVibrato()
+{
+  if(state[VI_SEL_CC] == 1 && state[MA_RAT_CC] > 10) vibratoTimer.begin(doVibrato, volume[state[MA_RAT_CC]]*500000/32);
+  else vibratoTimer.end();
 }
 
 /***************************************************************************
@@ -138,6 +187,10 @@ void readEnvelope()
  */
 void changeControl(byte channel, byte control, byte value)
 {
+  Serial.print(control);
+  Serial.print("    ");
+  Serial.println(value);
+
   if(control <= NUM_INPUTS) state[control] = value;  // update global state with the new reading
   switch(control)
   {
@@ -183,15 +236,26 @@ void changeControl(byte channel, byte control, byte value)
       updateWaveform(WAVEFORM_SQUARE);
     break;
 
+
     // filter and lfo
+    case LF_SEL_CC:
+      readLFO();
+    break;
+    case LF_DEP_CC:
+    break;
+    case FI_RES_CC:
+      updateRes();
+    break;
     case FI_SEL_CC:
       readFilter();
     break;
-    case FI_RES_CC:
-      updateFilterRes();
-    break;
-    case FI_FRQ_CC:
+    case FI_DEP_CC:
       updateFilterFreq();
+    break;
+
+    // vibrato
+    case VI_DEP_CC:
+      updateVibrato();
     break;
 
     // envelope 
@@ -222,28 +286,32 @@ void initializeAudio()
 { 
   //range 0 - 127
   state[MA_VOL_CC] = 120;
-  state[MA_RAT_CC] = 0;
-  state[WF_MI1_CC] = 80;
-  state[WF_MI2_CC] = 100;
-  state[NO_MIX_CC] = 60;
-  state[BO_MIX_CC] = 30;
-  state[FI_RES_CC] = 30;
-  state[FI_FRQ_CC] = 100;
-  state[EN_ATT_CC] = 30;
-  state[EN_DEC_CC] = 120;
-  state[EN_SUS_CC] = 120;
-  state[EN_REL_CC] = 30;
+  state[MA_RAT_CC] = 50;
+  state[WF_MI1_CC] = 120;
+  state[WF_MI2_CC] = 120;
+  state[NO_MIX_CC] = 30;
+  state[BO_MIX_CC] = 60;
+  state[FI_RES_CC] = 50;
+  state[FI_DEP_CC] = 120;
+  state[LF_DEP_CC] = 60;
+  state[VI_DEP_CC] = 10;
+  state[EN_ATT_CC] = 5;
+  state[EN_DEC_CC] = 127;
+  state[EN_SUS_CC] = 127;
+  state[EN_REL_CC] = 40;
 
   // range 0 - 1
   state[WF_SEL_CC] = 0;
-  state[NO_SEL_CC] = 1;
+  state[NO_SEL_CC] = 0;
   state[BO_SEL_CC] = 1;
   state[FI_SEL_CC] = 1;
-  state[EN_SEL_CC] = 0;
+  state[LF_SEL_CC] = 1;
+  state[VI_SEL_CC] = 1;
+  state[EN_SEL_CC] = 1;
 
   for( int i = 0; i < 4; i++)
     for(int j = 0; j < NUM_INPUT_MIXER; j++)
-      inMixer[j].gain(i, 0.2);
+      inMixer[j].gain(i, 0.1);
 
   // default waveform inits
   // this is temporary hardcoding, later these will be updated based on hardware
@@ -252,16 +320,18 @@ void initializeAudio()
     activeNotes[i] = 0;
     waveforms1[i].amplitude(0);
     waveforms2[i].amplitude(0);
-    waveforms1[i].begin(WAVEFORM_SQUARE);
-    waveforms2[i].begin(WAVEFORM_SAWTOOTH);
+    waveforms1[i].begin(WAVEFORM_SAWTOOTH);
+    waveforms2[i].begin(WAVEFORM_SQUARE);
     pink[i].amplitude(0);
     white[i].amplitude(0);
   }
 
   readEnvelope();
+  readLFO();
   readFilter();
   updateVolume();
   updateBoost();
+  updateVibrato();
 }
 
 #endif

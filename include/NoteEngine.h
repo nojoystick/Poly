@@ -39,15 +39,16 @@ void startNote(int onIndex, int note, int velocity)
   int osc2Vol = (state[WF_MI2_CC] * velocity)/PEAK_VOL;
   int noisVol = (state[NO_MIX_CC]*velocity)/PEAK_VOL;
   
-  waveforms1[onIndex].frequency(frequency[note]);
-  waveforms2[onIndex].frequency(frequency[note+12]);
+  waveforms1[onIndex].frequency(frequency[note] * globalBend);
+  waveforms2[onIndex].frequency(frequency[note+12] * globalBend);
   waveforms1[onIndex].amplitude(volume[osc1Vol]);
   waveforms2[onIndex].amplitude(volume[osc2Vol]);
+
   if(state[NO_SEL_CC] == 1) pink[onIndex].amplitude(volume[noisVol]);
-  else white[onIndex].amplitude(volume[noisVol]);
-  envelope[onIndex].noteOn();  
-  if(state[FI_SEL_CC] == 1) velFilter[onIndex].frequency(80 * state[FI_FRQ_CC] * hardVolume[velocity]);
-  if(state[BO_SEL_CC] == 1) sat[onIndex].bits(16 - ((int)(state[BO_MIX_CC]*DIV8)*volume[velocity]));
+  else white[onIndex].amplitude(volume[noisVol]); 
+  if(state[FI_SEL_CC] == 1) filter[onIndex].frequency(2000 + 80 * state[FI_DEP_CC] * hardVolume[velocity]);
+  if(state[BO_SEL_CC] == 1) sat[onIndex].bits(16 - (volume[(int)(velocity*state[BO_MIX_CC]/127)] * 16));
+  envelope[onIndex].noteOn(); 
 }
 
 /***************************************************************************
@@ -55,13 +56,15 @@ void startNote(int onIndex, int note, int velocity)
  * Helper for offNote
  * mute the oscilattors and noise
  * note that this isn't called if the envelope is active
+ * only release a note when the vibrato isn't modulating (start of cycle)
  */
 void stopNote(int offIndex)
 {
-    waveforms1[offIndex].amplitude(0);
-    waveforms2[offIndex].amplitude(0);
-    pink[offIndex].amplitude(0);
-    white[offIndex].amplitude(0);
+  while(vibStep != 0){}
+  waveforms1[offIndex].amplitude(0);
+  waveforms2[offIndex].amplitude(0);
+  pink[offIndex].amplitude(0);
+  white[offIndex].amplitude(0);
 }
 
 /***************************************************************************
@@ -100,8 +103,35 @@ void offNote(byte channel, byte note, byte velocity)
     if(offIndex != -1)
     {
       if(state[EN_SEL_CC] == 0) stopNote(offIndex);
-      else envelope[offIndex].noteOff();
+      else 
+      {
+        while(vibStep!=0){}
+        envelope[offIndex].noteOff();
+      }
       activeNotes[offIndex] = 0;
+    }
+  }
+}
+
+/***************************************************************************
+ * pitchBend
+ * The only MIDI function not automatically built in to MIDI.read()
+ * A MIDI bend value is 16 bits instead of 8
+ * Use library function map() to map that to a whole tone of pitch
+ * Update the globalBend variable to catch any existing notes
+ */
+void pitchBend(byte channel, int bend)
+{
+  float bendF = map(float(bend), 0, 32767, -2, 2);
+  globalBend = pow(2, bendF / 12);
+
+  for(int i = 0; i < POLY; i++)
+  {
+    if(activeNotes[i] != 0)
+    {
+      int currNote = activeNotes[i];
+      waveforms1[i].frequency(frequency[currNote] * globalBend);
+      waveforms2[i].frequency(frequency[currNote+12] * globalBend);
     }
   }
 }
@@ -115,6 +145,7 @@ void startMidi()
   MIDI.setHandleNoteOn(onNote);
   MIDI.setHandleNoteOff(offNote);
   MIDI.setHandleControlChange(changeControl);
+  //MIDI.setHandlePitchChange(pitchBend);
 }
 
 #endif
