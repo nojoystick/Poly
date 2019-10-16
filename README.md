@@ -42,7 +42,7 @@ The signal chain looks like this:
 3. Extract ZIP archive
 4. Run these commands:
 
-.. code-block:: bash
+```
 
     # Change directory to example
     > cd platform-teensy/examples/arduino-blink
@@ -61,3 +61,4 @@ The signal chain looks like this:
 
     # Clean build files
     > platformio run --target clean
+```
