@@ -20,6 +20,10 @@ This is an 8-voice polyphonic synthesizer.
 * Mod selector
      * Up: saturation and filter are velocity-responsive
      * Down: saturation and filter are fixed at the knob-level
+     
+## Audio Samples
+A quick set of clips showing just a few of the sonic possibilities for this synth.
+https://drive.google.com/file/d/1_OdjC43nSI41qQ626jJ5wCDeePIFhjKQ/view?usp=sharing
 
 ## How to build PlatformIO based project
 
