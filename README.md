@@ -4,36 +4,22 @@
 
 This is an 8-voice polyphonic synthesizer.
 
+![Poly](https://github.com/dallinw/Poly/blob/master/Screen%20Shot%202019-11-13%20at%208.35.47%20AM.png)
+
 ## Features
 * Two oscillators with configurable waveform and volume
-  * sine, reverse triangle, triangle, sawtooth, square
+  * sine, reverse triangle, triangle, square, sawtooth
 * Selectable pink or white noise with configurable volume
-* Saturation with velocity response
-* ADSR Envelope
-* Filter with resonance, frequency, and velocity response
+* Bitcrusher
 * Vibrato with configurable rate and depth
+* ADSR Envelope
+* Filter with configurable resonance and frequency
 * LFO with configurable rate and depth
 * Pitch bend
-
-The signal chain looks like this:
-
-```
-/****************************************************************************
-* 
-* Waveform1 -\
-*             \   | combine  | 
-* Waveform2 ---\  |   to     |   
-*               ->|   one    | -> [sat] -> [envelope] -> [filter] -\
-* Pink --------/  | inMixer  |                                      \
-*             /                                                      \   | condense |
-* White -----/                                                        \__|    to    |
-*                                                                     /  |   one    | -> [endFilter] -> [LFO] -> lineout
-*                                                                    /   | outMixer |
-* ... etc                                                           /
-* for all 8 --------------------> [sat] -> [envelope] -> [filter] -/
-* voices                                                        ...                                      
-*/   
-```
+* Detune
+* Mod selector
+     * Up: saturation and filter are velocity-responsive
+     * Down: saturation and filter are fixed at the knob-level
 
 ## How to build PlatformIO based project
 
